@@ -2,8 +2,7 @@
 Multi-Brain AI Engine
 ─────────────────────
 Five specialized agents, each independently configurable per provider and model.
-They work both solo and in chains — a detection event flows through Triage →
-Detection → Mitigation brains in sequence.
+Supports: Claude (Anthropic), OpenAI, Google Gemini, Ollama (local), and None.
 
 Brain roster:
   triage     Rapid router: classifies events and routes to specialist brains
@@ -19,8 +18,10 @@ Environment variables (per-brain overrides, falls back to AI_PROVIDER/AI_MODEL):
   BRAIN_POLICY_PROVIDER     BRAIN_POLICY_MODEL
   BRAIN_MITIGATION_PROVIDER BRAIN_MITIGATION_MODEL
 
+Provider API keys (can also be set at runtime via /api/ai/provider-keys):
   ANTHROPIC_API_KEY   (claude provider)
   OPENAI_API_KEY      (openai provider)
+  GEMINI_API_KEY      (gemini provider)
   OLLAMA_HOST         (ollama provider, default http://localhost:11434)
 """
 
@@ -33,18 +34,81 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# ── Global keys / hosts ────────────────────────────────────────────────────
+# ── Env-based keys / hosts ─────────────────────────────────────────────────
 _ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 _OPENAI_KEY    = os.getenv("OPENAI_API_KEY",    "")
+_GEMINI_KEY    = os.getenv("GEMINI_API_KEY",    "")
 _OLLAMA_HOST   = os.getenv("OLLAMA_HOST",       "http://localhost:11434")
 _AI_PROVIDER   = os.getenv("AI_PROVIDER",       "none")
 _AI_MODEL      = os.getenv("AI_MODEL",          "")
 
+# ── Runtime key store (set via UI, takes precedence over env) ──────────────
+_RUNTIME_KEYS: dict[str, str] = {}
+_RUNTIME_OLLAMA_HOST: str = ""
+
 _DEFAULT_MODELS = {
-    "claude": "claude-sonnet-4-6",
+    "claude": "claude-sonnet-4-5",
     "ollama": "llama3.2",
     "openai": "gpt-4o",
+    "gemini": "gemini-2.0-flash",
 }
+
+
+def _get_key(provider: str) -> str:
+    """Return runtime key (UI-set) if available, else fall back to env var."""
+    runtime = _RUNTIME_KEYS.get(provider, "")
+    if runtime:
+        return runtime
+    env_map = {
+        "anthropic": _ANTHROPIC_KEY,
+        "claude":    _ANTHROPIC_KEY,
+        "openai":    _OPENAI_KEY,
+        "gemini":    _GEMINI_KEY,
+    }
+    return env_map.get(provider, "")
+
+
+def _get_ollama_host() -> str:
+    return _RUNTIME_OLLAMA_HOST or _OLLAMA_HOST
+
+
+def set_provider_key(provider: str, api_key: str = "", base_url: str = ""):
+    """Set a runtime API key / Ollama host. Takes effect immediately for all brains."""
+    global _RUNTIME_OLLAMA_HOST
+    if api_key:
+        _RUNTIME_KEYS[provider] = api_key
+    if base_url and provider == "ollama":
+        _RUNTIME_OLLAMA_HOST = base_url
+    logger.info(f"Provider key updated: {provider} ({'key set' if api_key else 'url set'})")
+
+
+def get_provider_status() -> dict:
+    """Return which providers have keys configured (never expose the actual key)."""
+    def _src(provider: str, env_key: str) -> str:
+        if _RUNTIME_KEYS.get(provider): return "runtime"
+        if env_key: return "env"
+        return "none"
+
+    return {
+        "anthropic": {
+            "configured": bool(_get_key("anthropic")),
+            "source": _src("anthropic", _ANTHROPIC_KEY),
+        },
+        "openai": {
+            "configured": bool(_get_key("openai")),
+            "source": _src("openai", _OPENAI_KEY),
+        },
+        "gemini": {
+            "configured": bool(_get_key("gemini")),
+            "source": _src("gemini", _GEMINI_KEY),
+        },
+        "ollama": {
+            "configured": True,
+            "host": _get_ollama_host(),
+            "source": "runtime" if _RUNTIME_OLLAMA_HOST else "env",
+        },
+    }
+
 
 # ── Brain definitions ──────────────────────────────────────────────────────
 @dataclass
@@ -73,8 +137,9 @@ class BrainConfig:
 
     @property
     def configured(self) -> bool:
-        if self.provider == "claude":  return bool(_ANTHROPIC_KEY)
-        if self.provider == "openai":  return bool(_OPENAI_KEY)
+        if self.provider == "claude":  return bool(_get_key("anthropic"))
+        if self.provider == "openai":  return bool(_get_key("openai"))
+        if self.provider == "gemini":  return bool(_get_key("gemini"))
         if self.provider == "ollama":  return True
         return False
 
@@ -95,12 +160,12 @@ class BrainConfig:
             "enabled":       self.enabled,
             "configured":    self.configured,
             "stats": {
-                "total_calls":   self.stats.total_calls,
-                "success_calls": self.stats.success_calls,
-                "failed_calls":  self.stats.failed_calls,
-                "avg_latency_ms":self.avg_latency_ms,
-                "last_used":     self.stats.last_used,
-                "last_error":    self.stats.last_error,
+                "total_calls":    self.stats.total_calls,
+                "success_calls":  self.stats.success_calls,
+                "failed_calls":   self.stats.failed_calls,
+                "avg_latency_ms": self.avg_latency_ms,
+                "last_used":      self.stats.last_used,
+                "last_error":     self.stats.last_error,
             },
         }
 
@@ -192,7 +257,7 @@ def reconfigure_brain(role: str, provider: str, model: str):
     brain.model    = model or _DEFAULT_MODELS.get(provider, "unknown")
 
 
-# ── Core LLM caller ────────────────────────────────────────────────────────
+# ── JSON extractor ─────────────────────────────────────────────────────────
 def _extract_json(text: str) -> Optional[dict]:
     start = text.find("{")
     end   = text.rfind("}") + 1
@@ -203,6 +268,8 @@ def _extract_json(text: str) -> Optional[dict]:
     except json.JSONDecodeError:
         return None
 
+
+# ── Core LLM caller ────────────────────────────────────────────────────────
 async def _call_brain(brain: BrainConfig, user_prompt: str) -> Optional[dict]:
     if not brain.enabled or not brain.configured:
         return None
@@ -211,11 +278,13 @@ async def _call_brain(brain: BrainConfig, user_prompt: str) -> Optional[dict]:
     brain.stats.total_calls += 1
     try:
         if brain.provider == "claude":
-            result = await _claude(brain.system_prompt, user_prompt, brain.model)
+            result = await _claude(brain.system_prompt, user_prompt, brain.model, _get_key("anthropic"))
         elif brain.provider == "ollama":
             result = await _ollama(brain.system_prompt, user_prompt, brain.model)
         elif brain.provider == "openai":
-            result = await _openai(brain.system_prompt, user_prompt, brain.model)
+            result = await _openai(brain.system_prompt, user_prompt, brain.model, _get_key("openai"))
+        elif brain.provider == "gemini":
+            result = await _gemini(brain.system_prompt, user_prompt, brain.model, _get_key("gemini"))
         else:
             return None
 
@@ -229,59 +298,93 @@ async def _call_brain(brain: BrainConfig, user_prompt: str) -> Optional[dict]:
     except Exception as e:
         brain.stats.failed_calls += 1
         brain.stats.last_error    = str(e)[:200]
-        logger.warning(f"Brain [{brain.role}/{brain.model}] failed: {e}")
+        logger.warning(f"Brain [{brain.role}/{brain.provider}/{brain.model}] failed: {e}")
         return None
 
 
-async def _claude(system: str, user: str, model: str) -> Optional[dict]:
+# ── Provider call implementations ──────────────────────────────────────────
+
+async def _claude(system: str, user: str, model: str, api_key: str) -> Optional[dict]:
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": _ANTHROPIC_KEY, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": model, "max_tokens": 1024,
-                  "system": system,
-                  "messages": [{"role": "user", "content": user}]},
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 1024,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
         )
         r.raise_for_status()
         return _extract_json(r.json()["content"][0]["text"])
 
-async def _ollama(system: str, user: str, model: str) -> Optional[dict]:
-    async with httpx.AsyncClient(timeout=90) as c:
-        r = await c.post(
-            f"{_OLLAMA_HOST}/api/chat",
-            json={"model": model, "stream": False, "format": "json",
-                  "messages": [{"role": "system", "content": system},
-                                {"role": "user",   "content": user}]},
-        )
-        r.raise_for_status()
-        return _extract_json(r.json()["message"]["content"])
 
-async def _openai(system: str, user: str, model: str) -> Optional[dict]:
+async def _openai(system: str, user: str, model: str, api_key: str) -> Optional[dict]:
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {_OPENAI_KEY}"},
-            json={"model": model,
-                  "response_format": {"type": "json_object"},
-                  "max_tokens": 1024,
-                  "messages": [{"role": "system", "content": system},
-                                {"role": "user",   "content": user}]},
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "response_format": {"type": "json_object"},
+                "max_tokens": 1024,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user},
+                ],
+            },
         )
         r.raise_for_status()
         return _extract_json(r.json()["choices"][0]["message"]["content"])
 
 
+async def _gemini(system: str, user: str, model: str, api_key: str) -> Optional[dict]:
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": api_key, "content-type": "application/json"},
+            json={
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "maxOutputTokens": 1024,
+                },
+            },
+        )
+        r.raise_for_status()
+        return _extract_json(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+
+
+async def _ollama(system: str, user: str, model: str) -> Optional[dict]:
+    async with httpx.AsyncClient(timeout=90) as c:
+        r = await c.post(
+            f"{_get_ollama_host()}/api/chat",
+            json={
+                "model": model,
+                "stream": False,
+                "format": "json",
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user},
+                ],
+            },
+        )
+        r.raise_for_status()
+        return _extract_json(r.json()["message"]["content"])
+
+
 # ── Brain-chain helpers ────────────────────────────────────────────────────
 
 async def analyze_detection(detection_data: dict) -> Optional[dict]:
-    """
-    Chain: Triage → Detection → (if high risk) Mitigation
-    Returns a composite analysis dict keyed by brain role.
-    """
+    """Chain: Triage → Detection → (if high risk) Mitigation"""
     results: dict = {}
 
-    # 1. Triage brain — classify and route
     triage_result = await _call_brain(
         _BRAINS["triage"],
         f"""Classify this detection event and decide which specialist brains should analyze it.
@@ -302,7 +405,7 @@ Respond with:
 
     route_to = (triage_result or {}).get("route_to", ["detection"])
 
-    # 2. Detection brain — deep analysis
+    det_result = None
     if "detection" in route_to:
         det_result = await _call_brain(
             _BRAINS["detection"],
@@ -324,10 +427,8 @@ Respond with:
         if det_result:
             results["detection"] = {**det_result, "_brain": _BRAINS["detection"].model}
 
-    # 3. Mitigation brain — response recommendation (high/critical only)
-    urgency   = (triage_result  or {}).get("urgency",    "")
-    risk_lvl  = (det_result     if "detection" in locals() else {}) or {}
-    risk_lvl  = risk_lvl.get("risk_level", "")
+    urgency  = (triage_result or {}).get("urgency",    "")
+    risk_lvl = (det_result    or {}).get("risk_level", "")
     if "mitigation" in route_to or risk_lvl in ("high", "critical") or urgency in ("high", "critical"):
         mit_result = await _call_brain(
             _BRAINS["mitigation"],

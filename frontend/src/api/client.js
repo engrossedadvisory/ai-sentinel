@@ -58,15 +58,25 @@ export const api = {
   updateDetectionStatus: (id, status) => request(`/detections/${id}/status`, { method: 'PUT', body: { status } }),
 
   // AI Brains
-  getAIStatus:          ()           => request('/ai/status'),
-  getBrains:            ()           => request('/ai/brains'),
-  getBrain:             (role)       => request(`/ai/brains/${role}`),
-  configureBrain:       (role, data) => request(`/ai/brains/${role}/configure`, { method: 'POST', body: data }),
-  testBrain:            (role)       => request(`/ai/brains/${role}/test`,      { method: 'POST' }),
-  runPolicyBrain:       ()           => request('/ai/brains/policy/run',         { method: 'POST' }),
-  getRecommendations:   (status)     => request(`/ai/recommendations${status ? '?status=' + status : ''}`),
-  acceptRecommendation: (id)         => request(`/ai/recommendations/${id}/accept`, { method: 'POST' }),
-  rejectRecommendation: (id)         => request(`/ai/recommendations/${id}/reject`, { method: 'POST' }),
+  getAIStatus:          ()                        => request('/ai/status'),
+  getBrains:            ()                        => request('/ai/brains'),
+  getBrain:             (role)                    => request(`/ai/brains/${role}`),
+  configureBrain:       (role, data)              => request(`/ai/brains/${role}/configure`, { method: 'POST', body: data }),
+  testBrain:            (role)                    => request(`/ai/brains/${role}/test`,      { method: 'POST' }),
+  runPolicyBrain:       ()                        => request('/ai/brains/policy/run',         { method: 'POST' }),
+  getRecommendations:   (status)                  => request(`/ai/recommendations${status ? '?status=' + status : ''}`),
+  acceptRecommendation: (id)                      => request(`/ai/recommendations/${id}/accept`, { method: 'POST' }),
+  rejectRecommendation: (id)                      => request(`/ai/recommendations/${id}/reject`, { method: 'POST' }),
+
+  // Provider key management
+  getProviderKeys: ()           => request('/ai/provider-keys'),
+  setProviderKey:  (provider, api_key, base_url) =>
+    request('/ai/provider-keys', { method: 'POST', body: { provider, api_key, base_url } }),
+
+  // Ollama model management
+  getOllamaModels:    ()      => request('/ai/ollama/models'),
+  pullOllamaModel:    (model) => request('/ai/ollama/pull', { method: 'POST', body: { model } }),
+  getOllamaPullStatus:(model) => request(`/ai/ollama/pull/status/${encodeURIComponent(model)}`),
 
   // Mitigations
   getMitigations: (params = {}) => {
