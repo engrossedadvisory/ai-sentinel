@@ -1,6 +1,9 @@
 # Environment — never commit secrets
 .env
 
+# Auto-generated at deploy time — do not commit
+docker-compose.override.yml
+
 # Python
 __pycache__/
 *.py[cod]

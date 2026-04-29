@@ -33,116 +33,104 @@ else
   exit 1
 fi
 
+# ── Ensure Docker daemon is healthy ──────────────────────────────────────
+echo "==> Checking Docker daemon…"
+if ! docker info &>/dev/null 2>&1; then
+  echo "    Docker not responding — restarting daemon…"
+  systemctl restart docker
+  sleep 4
+fi
+echo "    ✓ Docker daemon OK"
+
 # ── Port detection ────────────────────────────────────────────────────────
-# Check all three sources: host listeners, lsof, AND running Docker containers
+# Checks: ss (host), /proc/net/tcp, lsof, AND Docker container port table
 port_in_use() {
   local port=$1
-  # 1. Host-level listeners via ss
+
+  # ss — reliable on all modern Linux
   ss -tlnH 2>/dev/null | awk '{print $4}' | grep -q ":${port}$" && return 0
-  # 2. lsof fallback
-  if command -v lsof &>/dev/null; then
-    lsof -i "TCP:${port}" -sTCP:LISTEN &>/dev/null 2>&1 && return 0
-  fi
-  # 3. ALL Docker containers (running + stopped) — catches Docker's internal allocation table
-  if command -v docker &>/dev/null; then
-    docker ps -a --format '{{.Ports}}' 2>/dev/null \
-      | grep -q "0\.0\.0\.0:${port}->\|:::${port}->" && return 0
-  fi
-  # 4. /proc/net/tcp — final fallback, always present on Linux
-  local hex_port
-  hex_port=$(printf '%04X' "${port}")
-  grep -qi " 00000000:${hex_port} " /proc/net/tcp  2>/dev/null && return 0
-  grep -qi " 00000000:${hex_port} " /proc/net/tcp6 2>/dev/null && return 0
+
+  # /proc/net/tcp (hex port) — kernel-level, always present
+  local hex; hex=$(printf '%04X' "${port}")
+  grep -qi ":${hex} " /proc/net/tcp  2>/dev/null && return 0
+  grep -qi ":${hex} " /proc/net/tcp6 2>/dev/null && return 0
+
+  # lsof — optional but thorough
+  command -v lsof &>/dev/null && lsof -iTCP:"${port}" -sTCP:LISTEN -t &>/dev/null 2>&1 && return 0
+
+  # Docker port table — catches ports held by containers (running OR stopped)
+  docker ps -a --format '{{.Ports}}' 2>/dev/null \
+    | grep -qE "(0\.0\.0\.0|::):${port}->" && return 0
+
   return 1
 }
 
 find_free_port() {
   local port=$1
   while port_in_use "${port}"; do
+    echo "    ⚠ Port ${port} in use — trying $((port+1))…" >&2
     port=$((port + 1))
   done
   echo "${port}"
 }
 
-# ── Ensure Docker networking is healthy before checking ports ─────────────
-echo "==> Ensuring Docker daemon is running…"
-if ! docker info &>/dev/null 2>&1; then
-  echo "    Docker not responding — attempting restart…"
-  systemctl restart docker
-  sleep 3
-fi
-echo "    ✓ Docker daemon OK"
+echo "==> Scanning for available ports…"
+FRONTEND_PORT=$(find_free_port 3000)
+BACKEND_PORT=$(find_free_port 8000)
+echo "    ✓ Dashboard  → port ${FRONTEND_PORT}"
+echo "    ✓ API        → port ${BACKEND_PORT}"
 
-echo "==> Checking port availability…"
-
-FRONTEND_PORT=3000
-BACKEND_PORT=8000
-
-# Check frontend port
-DETECTED_FRONTEND=$(find_free_port ${FRONTEND_PORT})
-if [[ "${DETECTED_FRONTEND}" != "${FRONTEND_PORT}" ]]; then
-  echo "    ⚠ Port ${FRONTEND_PORT} in use → using port ${DETECTED_FRONTEND} for dashboard"
-  FRONTEND_PORT=${DETECTED_FRONTEND}
-else
-  echo "    ✓ Port ${FRONTEND_PORT} available (dashboard)"
-fi
-
-# Check backend port
-DETECTED_BACKEND=$(find_free_port ${BACKEND_PORT})
-if [[ "${DETECTED_BACKEND}" != "${BACKEND_PORT}" ]]; then
-  echo "    ⚠ Port ${BACKEND_PORT} in use → using port ${DETECTED_BACKEND} for API"
-  BACKEND_PORT=${DETECTED_BACKEND}
-else
-  echo "    ✓ Port ${BACKEND_PORT} available (API)"
-fi
-
-# ── GitHub auth check ─────────────────────────────────────────────────────
+# ── GitHub auth ───────────────────────────────────────────────────────────
 echo "==> Checking GitHub authentication…"
-if command -v gh &>/dev/null; then
-  if gh auth status &>/dev/null; then
-    echo "    ✓ gh CLI authenticated"
-    GH_TOKEN="$(gh auth token 2>/dev/null || true)"
-    if [[ -n "${GH_TOKEN}" ]]; then
-      REPO_URL="https://oauth2:${GH_TOKEN}@github.com/${REPO}.git"
-    fi
-  else
-    echo "    ⚠ gh CLI not authenticated — run:  gh auth login"
-    echo "    Continuing with public HTTPS…"
-  fi
+if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+  echo "    ✓ gh CLI authenticated"
+  GH_TOKEN="$(gh auth token 2>/dev/null || true)"
+  [[ -n "${GH_TOKEN}" ]] && REPO_URL="https://oauth2:${GH_TOKEN}@github.com/${REPO}.git"
 else
-  echo "    ⚠ gh CLI not found — continuing with public HTTPS"
+  echo "    ⚠ gh CLI not authed — using public HTTPS"
 fi
 
 # ── Clone or pull ─────────────────────────────────────────────────────────
 if [[ "${PULL_ONLY}" == "true" ]]; then
-  echo "==> Pulling latest from GitHub…"
-  if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
-    echo "ERROR: ${INSTALL_DIR} is not a git repo. Run without --pull for a fresh clone." >&2
-    exit 1
-  fi
+  [[ ! -d "${INSTALL_DIR}/.git" ]] && { echo "ERROR: not a git repo — run without --pull first" >&2; exit 1; }
+  echo "==> Pulling latest…"
   git -C "${INSTALL_DIR}" pull --rebase origin main
-  echo "    ✓ Updated to latest"
 else
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    echo "==> ${INSTALL_DIR} already exists — pulling latest…"
+    echo "==> Updating existing install…"
     git -C "${INSTALL_DIR}" pull --rebase origin main
   else
     echo "==> Cloning ${REPO} → ${INSTALL_DIR}…"
     git clone "${REPO_URL}" "${INSTALL_DIR}"
-    echo "    ✓ Cloned"
   fi
 fi
+echo "    ✓ Code ready"
+
+# ── Write docker-compose.override.yml with the detected ports ─────────────
+# This file is read automatically by docker compose and takes full precedence
+# over docker-compose.yml — no env var substitution, no ambiguity.
+OVERRIDE="${INSTALL_DIR}/docker-compose.override.yml"
+cat > "${OVERRIDE}" << OVERRIDE_EOF
+# Auto-generated by deploy.sh — do not edit manually, re-run deploy.sh to update
+services:
+  backend:
+    ports:
+      - "${BACKEND_PORT}:8000"
+  frontend:
+    ports:
+      - "${FRONTEND_PORT}:80"
+OVERRIDE_EOF
+echo "    ✓ Port override written → ${OVERRIDE}"
 
 # ── Persistent data directory ─────────────────────────────────────────────
 mkdir -p "${INSTALL_DIR}/data"
 chmod 700 "${INSTALL_DIR}/data"
 
-# ── Write .env (ports always updated; other keys only set if file is new) ──
+# ── Create .env if it doesn't exist ──────────────────────────────────────
 ENV_FILE="${INSTALL_DIR}/.env"
-
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "==> Creating ${ENV_FILE}…"
-  cat > "${ENV_FILE}" << ENVEOF
+  cat > "${ENV_FILE}" << 'ENVEOF'
 # ─────────────────────────────────────────────────────────────────
 #  AI SENTINEL — environment configuration
 #  "AI acts. SENTINEL answers."
@@ -150,10 +138,6 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 #  Edit this file then restart the service:
 #    sudo systemctl restart ai-sentinel
 # ─────────────────────────────────────────────────────────────────
-
-# ── Ports (auto-detected at deploy time) ─────────────────────────
-FRONTEND_PORT=${FRONTEND_PORT}
-BACKEND_PORT=${BACKEND_PORT}
 
 # ── Global AI fallback ────────────────────────────────────────────
 # Provider: none | claude | openai | gemini | ollama
@@ -185,18 +169,9 @@ OLLAMA_HOST=http://localhost:11434
 # BRAIN_MITIGATION_PROVIDER=openai
 # BRAIN_MITIGATION_MODEL=gpt-4o
 ENVEOF
-else
-  # .env already exists — update/add port lines only
-  echo "==> Updating ports in existing ${ENV_FILE}…"
-  # Remove old port lines then append fresh ones
-  sed -i '/^FRONTEND_PORT=/d' "${ENV_FILE}"
-  sed -i '/^BACKEND_PORT=/d'  "${ENV_FILE}"
-  # Insert port lines right after the first comment block (line 1)
-  sed -i "1a BACKEND_PORT=${BACKEND_PORT}\nFRONTEND_PORT=${FRONTEND_PORT}" "${ENV_FILE}"
+  echo "    ✓ Created ${ENV_FILE}"
 fi
-
 chmod 600 "${ENV_FILE}"
-echo "    ✓ Ports set: frontend=${FRONTEND_PORT}, backend=${BACKEND_PORT}"
 
 # ── systemd service ───────────────────────────────────────────────────────
 echo "==> Writing systemd service…"
@@ -213,7 +188,6 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=-${INSTALL_DIR}/.env
-# Tear down first to release any stale Docker port allocations, then start fresh
 ExecStartPre=-${COMPOSE_BIN} down --remove-orphans
 ExecStart=${COMPOSE_BIN} up -d --build
 ExecStop=${COMPOSE_BIN} down --remove-orphans
@@ -228,6 +202,7 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ── Done ──────────────────────────────────────────────────────────────────
+HOST_IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║       AI SENTINEL — Deployment Complete              ║"
@@ -236,23 +211,22 @@ echo "╚═══════════════════════�
 echo ""
 echo "  Install dir : ${INSTALL_DIR}"
 echo "  Config      : ${ENV_FILE}"
+echo "  Port config : ${OVERRIDE}"
 echo "  GitHub      : https://github.com/${REPO}"
 echo ""
-echo "  Ports assigned:"
-echo "    Dashboard  → http://$(hostname -I | awk '{print $1}'):${FRONTEND_PORT}"
-echo "    API / docs → http://$(hostname -I | awk '{print $1}'):${BACKEND_PORT}/docs"
+echo "  Access URLs:"
+echo "    Dashboard  → http://${HOST_IP}:${FRONTEND_PORT}"
+echo "    API / docs → http://${HOST_IP}:${BACKEND_PORT}/docs"
 echo ""
 echo "  Next steps:"
-echo "    1. Edit config:   sudo nano ${ENV_FILE}"
-echo "    2. Start service: sudo systemctl start ${SERVICE_NAME}"
+echo "    sudo nano ${ENV_FILE}                    # set AI provider keys"
+echo "    sudo systemctl start ${SERVICE_NAME}     # start the platform"
 echo ""
-echo "  Service commands:"
-echo "    sudo systemctl start   ${SERVICE_NAME}"
+echo "  Manage:"
 echo "    sudo systemctl stop    ${SERVICE_NAME}"
 echo "    sudo systemctl restart ${SERVICE_NAME}"
-echo "    sudo systemctl status  ${SERVICE_NAME}"
 echo "    sudo journalctl -u ${SERVICE_NAME} -f"
 echo ""
-echo "  To update from GitHub:"
+echo "  Update from GitHub:"
 echo "    sudo bash ${INSTALL_DIR}/deploy.sh --pull"
 echo ""
