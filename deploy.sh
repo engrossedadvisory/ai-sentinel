@@ -9,7 +9,16 @@ REPO="engrossedadvisory/ai-sentinel"
 REPO_URL="https://github.com/${REPO}.git"
 INSTALL_DIR="/opt/ai-sentinel"
 SERVICE_NAME="ai-sentinel"
-COMPOSE_BIN="$(command -v docker-compose 2>/dev/null || echo 'docker compose')"
+# Prefer 'docker compose' (v2 plugin) over deprecated 'docker-compose' (v1)
+if docker compose version &>/dev/null 2>&1; then
+  COMPOSE_BIN="docker compose"
+elif command -v docker-compose &>/dev/null; then
+  COMPOSE_BIN="docker-compose"
+else
+  echo "ERROR: Neither 'docker compose' nor 'docker-compose' found. Install Docker first." >&2
+  exit 1
+fi
+echo "==> Using compose: ${COMPOSE_BIN}"
 
 # ── Require root ──────────────────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
@@ -131,7 +140,6 @@ ExecStart=${COMPOSE_BIN} up -d --build
 ExecStop=${COMPOSE_BIN} down
 ExecReload=${COMPOSE_BIN} pull && ${COMPOSE_BIN} up -d --build
 TimeoutStartSec=300
-Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
