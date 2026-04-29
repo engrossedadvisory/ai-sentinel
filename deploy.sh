@@ -188,7 +188,13 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=-${INSTALL_DIR}/.env
+# 1. Tear down any existing containers (ignore failure if already down)
 ExecStartPre=-${COMPOSE_BIN} down --remove-orphans
+# 2. Kill any lingering docker-proxy processes holding stale port bindings
+ExecStartPre=-/bin/sh -c "pkill -f 'docker-proxy' || true"
+# 3. Brief pause to let the kernel release port bindings
+ExecStartPre=/bin/sleep 2
+# 4. Start fresh
 ExecStart=${COMPOSE_BIN} up -d --build
 ExecStop=${COMPOSE_BIN} down --remove-orphans
 ExecReload=${COMPOSE_BIN} pull && ${COMPOSE_BIN} up -d --build
