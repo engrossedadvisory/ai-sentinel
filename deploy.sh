@@ -37,17 +37,18 @@ fi
 # Check all three sources: host listeners, lsof, AND running Docker containers
 port_in_use() {
   local port=$1
-  # 1. Host-level listeners (ss is always available on modern Linux)
+  # 1. Host-level listeners via ss
   ss -tlnH 2>/dev/null | awk '{print $4}' | grep -q ":${port}$" && return 0
-  # 2. lsof fallback (may not be installed)
+  # 2. lsof fallback
   if command -v lsof &>/dev/null; then
     lsof -i "TCP:${port}" -sTCP:LISTEN &>/dev/null 2>&1 && return 0
   fi
-  # 3. Running Docker containers holding this host port
+  # 3. ALL Docker containers (running + stopped) — catches Docker's internal allocation table
   if command -v docker &>/dev/null; then
-    docker ps --format '{{.Ports}}' 2>/dev/null | grep -q "0\.0\.0\.0:${port}->\|:::${port}->" && return 0
+    docker ps -a --format '{{.Ports}}' 2>/dev/null \
+      | grep -q "0\.0\.0\.0:${port}->\|:::${port}->" && return 0
   fi
-  # 4. /proc/net/tcp fallback (always present on Linux)
+  # 4. /proc/net/tcp — final fallback, always present on Linux
   local hex_port
   hex_port=$(printf '%04X' "${port}")
   grep -qi " 00000000:${hex_port} " /proc/net/tcp  2>/dev/null && return 0
@@ -212,8 +213,10 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=-${INSTALL_DIR}/.env
+# Tear down first to release any stale Docker port allocations, then start fresh
+ExecStartPre=-${COMPOSE_BIN} down --remove-orphans
 ExecStart=${COMPOSE_BIN} up -d --build
-ExecStop=${COMPOSE_BIN} down
+ExecStop=${COMPOSE_BIN} down --remove-orphans
 ExecReload=${COMPOSE_BIN} pull && ${COMPOSE_BIN} up -d --build
 TimeoutStartSec=300
 
