@@ -3,9 +3,9 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    container_name: governance-backend
+    container_name: ai-sentinel-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - governance_data:/app/data
     env_file:
@@ -27,9 +27,9 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: governance-frontend
+    container_name: ai-sentinel-frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -42,11 +42,11 @@ services:
 
   # ── Optional: local Ollama for on-premise AI ─────────────────────────────
   # Uncomment to run a local LLM alongside the platform.
-  # Then set AI_PROVIDER=ollama (or per-brain vars) in .env
+  # Then set BRAIN_*_PROVIDER=ollama and OLLAMA_HOST=http://ollama:11434 in .env
   #
   # ollama:
   #   image: ollama/ollama:latest
-  #   container_name: governance-ollama
+  #   container_name: ai-sentinel-ollama
   #   volumes:
   #     - ollama_models:/root/.ollama
   #   ports:
