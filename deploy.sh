@@ -34,15 +34,43 @@ else
 fi
 
 # ── Port detection ────────────────────────────────────────────────────────
-# Find the next free port starting from a given port
+# Check all three sources: host listeners, lsof, AND running Docker containers
+port_in_use() {
+  local port=$1
+  # 1. Host-level listeners (ss is always available on modern Linux)
+  ss -tlnH 2>/dev/null | awk '{print $4}' | grep -q ":${port}$" && return 0
+  # 2. lsof fallback (may not be installed)
+  if command -v lsof &>/dev/null; then
+    lsof -i "TCP:${port}" -sTCP:LISTEN &>/dev/null 2>&1 && return 0
+  fi
+  # 3. Running Docker containers holding this host port
+  if command -v docker &>/dev/null; then
+    docker ps --format '{{.Ports}}' 2>/dev/null | grep -q "0\.0\.0\.0:${port}->\|:::${port}->" && return 0
+  fi
+  # 4. /proc/net/tcp fallback (always present on Linux)
+  local hex_port
+  hex_port=$(printf '%04X' "${port}")
+  grep -qi " 00000000:${hex_port} " /proc/net/tcp  2>/dev/null && return 0
+  grep -qi " 00000000:${hex_port} " /proc/net/tcp6 2>/dev/null && return 0
+  return 1
+}
+
 find_free_port() {
   local port=$1
-  while ss -tlnH "sport = :${port}" 2>/dev/null | grep -q ":${port}" || \
-        lsof -i ":${port}" &>/dev/null 2>&1; do
+  while port_in_use "${port}"; do
     port=$((port + 1))
   done
   echo "${port}"
 }
+
+# ── Ensure Docker networking is healthy before checking ports ─────────────
+echo "==> Ensuring Docker daemon is running…"
+if ! docker info &>/dev/null 2>&1; then
+  echo "    Docker not responding — attempting restart…"
+  systemctl restart docker
+  sleep 3
+fi
+echo "    ✓ Docker daemon OK"
 
 echo "==> Checking port availability…"
 
