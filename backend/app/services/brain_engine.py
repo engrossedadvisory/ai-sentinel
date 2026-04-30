@@ -84,6 +84,33 @@ def _save_persisted_keys() -> None:
 # Load any previously saved keys at import time
 _load_persisted_keys()
 
+# ── Persistent brain config store ─────────────────────────────────────────
+_BRAIN_CONFIGS_FILE = "/app/data/.brain_configs.json"
+
+def _load_brain_configs() -> dict:
+    """Load saved brain provider/model assignments from disk."""
+    try:
+        if os.path.exists(_BRAIN_CONFIGS_FILE):
+            with open(_BRAIN_CONFIGS_FILE, "r") as f:
+                data = json.load(f)
+            logger.info(f"Loaded brain configs: {list(data.keys())}")
+            return data
+    except Exception as e:
+        logger.warning(f"Could not load brain configs: {e}")
+    return {}
+
+def _save_brain_configs() -> None:
+    """Write current brain provider/model assignments to disk."""
+    try:
+        data = {
+            role: {"provider": b.provider, "model": b.model}
+            for role, b in _BRAINS.items()
+        }
+        with open(_BRAIN_CONFIGS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.warning(f"Could not save brain configs: {e}")
+
 _DEFAULT_MODELS = {
     "claude": "claude-sonnet-4-5",
     "ollama": "llama3.2",
@@ -281,6 +308,13 @@ def _build_registry() -> dict[str, BrainConfig]:
 
 _BRAINS: dict[str, BrainConfig] = _build_registry()
 
+# Apply any previously saved brain configurations
+_saved_configs = _load_brain_configs()
+for _role, _cfg in _saved_configs.items():
+    if _role in _BRAINS:
+        _BRAINS[_role].provider = _cfg.get("provider", _BRAINS[_role].provider)
+        _BRAINS[_role].model    = _cfg.get("model",    _BRAINS[_role].model)
+
 
 def get_brain(role: str) -> BrainConfig:
     return _BRAINS[role]
@@ -294,6 +328,7 @@ def reconfigure_brain(role: str, provider: str, model: str):
     brain = _BRAINS[role]
     brain.provider = provider
     brain.model    = model or _DEFAULT_MODELS.get(provider, "unknown")
+    _save_brain_configs()  # persist immediately
 
 
 # ── JSON extractor ─────────────────────────────────────────────────────────

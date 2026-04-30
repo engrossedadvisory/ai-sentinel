@@ -11,6 +11,14 @@ from ..seed_data import DEMO_AGENT_IDS
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
+_DEMO_IDS_SET = set(DEMO_AGENT_IDS)
+
+def _is_demo_detection(d) -> bool:
+    entity = d.entity or {}
+    if entity.get("_demo"):
+        return True
+    return any(v in _DEMO_IDS_SET for v in entity.values() if isinstance(v, str))
+
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -55,12 +63,11 @@ def get_stats(demo_mode: bool = True, db: Session = Depends(get_db)):
         Mitigation.status.in_([MitigationStatus.PENDING, MitigationStatus.IN_PROGRESS])
     ).count()
 
-    # Detection demo-filter: demo detections have entity._demo == true
     all_detections = db.query(Detection).filter(Detection.status.in_(["new", "investigating"])).all()
     if demo_mode:
         new_detections = len(all_detections)
     else:
-        new_detections = sum(1 for d in all_detections if not (d.entity or {}).get("_demo"))
+        new_detections = sum(1 for d in all_detections if not _is_demo_detection(d))
 
     aq2 = _agent_q(db, demo_mode)
     risk_distribution = {
@@ -143,7 +150,7 @@ def get_recent_detections(limit: int = 5, demo_mode: bool = True, db: Session = 
         .all()
     )
     if not demo_mode:
-        all_d = [d for d in all_d if not (d.entity or {}).get("_demo")]
+        all_d = [d for d in all_d if not _is_demo_detection(d)]
     all_d = all_d[:limit]
     return [
         {

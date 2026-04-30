@@ -8,8 +8,22 @@ from ..models import Detection
 from ..schemas import DetectionReport, DetectionOut, DetectionStatusUpdate
 from ..websocket_manager import manager as ws_manager
 from ..services import brain_engine
+from ..seed_data import DEMO_AGENT_IDS
 
 router = APIRouter(prefix="/api/detections", tags=["detections"])
+
+_DEMO_IDS_SET = set(DEMO_AGENT_IDS)
+
+def _is_demo_detection(d) -> bool:
+    """True if this detection belongs to demo/seed data.
+    Handles both new records (entity._demo=True) and old ones seeded before
+    the flag was introduced (entity contains a known demo agent_id value).
+    """
+    entity = d.entity or {}
+    if entity.get("_demo"):
+        return True
+    # Fallback: check if any string value in entity matches a demo agent ID
+    return any(v in _DEMO_IDS_SET for v in entity.values() if isinstance(v, str))
 
 
 @router.get("", response_model=List[DetectionOut])
@@ -26,7 +40,7 @@ def list_detections(
         q = q.filter(Detection.detection_type == detection_type)
     results = q.order_by(Detection.detected_at.desc()).all()
     if not demo_mode:
-        results = [d for d in results if not (d.entity or {}).get("_demo")]
+        results = [d for d in results if not _is_demo_detection(d)]
     # Strip internal _demo tag from entity before returning
     for d in results:
         if d.entity and "_demo" in d.entity:

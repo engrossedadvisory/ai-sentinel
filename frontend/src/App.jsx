@@ -7,14 +7,23 @@ import ActivityFeed from './components/ActivityFeed'
 import DetectionPanel from './components/DetectionPanel'
 import MitigationCenter from './components/MitigationCenter'
 import BrainCenter from './components/BrainCenter'
-import { setDemoMode } from './api/client'
+import { setDemoMode, getDemoMode } from './api/client'
+
+// Sync module flag with persisted value immediately at load time
+// (before any component renders and makes API calls)
+const _persistedDemo = localStorage.getItem('sentinel_demo_mode')
+setDemoMode(_persistedDemo === null ? true : _persistedDemo === 'true')
 
 let alertId = 0
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 export default function App() {
   const [page,       setPage]      = useState('dashboard')
-  const [demoMode,   setDemoModeState] = useState(true)
+  const [demoMode,   setDemoModeState] = useState(() => {
+    // Persist demo/live choice across page refreshes
+    const saved = localStorage.getItem('sentinel_demo_mode')
+    return saved === null ? true : saved === 'true'
+  })
   const [navFilter,  setNavFilter] = useState({})
   // navKey increments on every onNav call — forces child to remount with fresh initialFilter
   const [navKey,     setNavKey]    = useState(0)
@@ -29,7 +38,8 @@ export default function App() {
   const toggleDemo = useCallback(() => {
     setDemoModeState(prev => {
       const next = !prev
-      setDemoMode(next)   // sync — happens before any re-render or effects
+      setDemoMode(next)                                    // sync module flag
+      localStorage.setItem('sentinel_demo_mode', String(next))  // persist
       return next
     })
   }, [])
