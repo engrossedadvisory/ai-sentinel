@@ -42,9 +42,47 @@ _OLLAMA_HOST   = os.getenv("OLLAMA_HOST",       "http://localhost:11434")
 _AI_PROVIDER   = os.getenv("AI_PROVIDER",       "none")
 _AI_MODEL      = os.getenv("AI_MODEL",          "")
 
+# ── Persistent key store ───────────────────────────────────────────────────
+# Stored in the governance_data volume so keys survive container restarts.
+_KEYS_FILE = "/app/data/.provider_keys.json"
+
 # ── Runtime key store (set via UI, takes precedence over env) ──────────────
 _RUNTIME_KEYS: dict[str, str] = {}
 _RUNTIME_OLLAMA_HOST: str = ""
+
+
+def _load_persisted_keys() -> None:
+    """Load keys saved by the UI from disk into the runtime store."""
+    global _RUNTIME_OLLAMA_HOST
+    try:
+        if os.path.exists(_KEYS_FILE):
+            with open(_KEYS_FILE, "r") as f:
+                data = json.load(f)
+            for provider, key in data.items():
+                if provider == "ollama_host":
+                    _RUNTIME_OLLAMA_HOST = key
+                elif key:
+                    _RUNTIME_KEYS[provider] = key
+            logger.info(f"Loaded persisted provider keys: {list(data.keys())}")
+    except Exception as e:
+        logger.warning(f"Could not load persisted keys: {e}")
+
+
+def _save_persisted_keys() -> None:
+    """Write the current runtime key store to disk."""
+    try:
+        os.makedirs(os.path.dirname(_KEYS_FILE), exist_ok=True)
+        data = {**_RUNTIME_KEYS}
+        if _RUNTIME_OLLAMA_HOST:
+            data["ollama_host"] = _RUNTIME_OLLAMA_HOST
+        with open(_KEYS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.warning(f"Could not persist provider keys: {e}")
+
+
+# Load any previously saved keys at import time
+_load_persisted_keys()
 
 _DEFAULT_MODELS = {
     "claude": "claude-sonnet-4-5",
@@ -73,13 +111,14 @@ def _get_ollama_host() -> str:
 
 
 def set_provider_key(provider: str, api_key: str = "", base_url: str = ""):
-    """Set a runtime API key / Ollama host. Takes effect immediately for all brains."""
+    """Set a runtime API key / Ollama host. Takes effect immediately and persists to disk."""
     global _RUNTIME_OLLAMA_HOST
     if api_key:
         _RUNTIME_KEYS[provider] = api_key
     if base_url and provider == "ollama":
         _RUNTIME_OLLAMA_HOST = base_url
-    logger.info(f"Provider key updated: {provider} ({'key set' if api_key else 'url set'})")
+    _save_persisted_keys()
+    logger.info(f"Provider key updated and persisted: {provider} ({'key set' if api_key else 'url set'})")
 
 
 def get_provider_status() -> dict:
