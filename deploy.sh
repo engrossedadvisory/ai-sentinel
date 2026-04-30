@@ -234,6 +234,11 @@ SVCEOF
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
+# ── Start / restart the service automatically ─────────────────────────────
+echo "==> Starting ${SERVICE_NAME}…"
+systemctl restart "${SERVICE_NAME}"
+echo "    ✓ Service started"
+
 # ── Done ──────────────────────────────────────────────────────────────────
 HOST_IP=$(hostname -I | awk '{print $1}')
 echo ""
@@ -251,9 +256,8 @@ echo "  Access URLs:"
 echo "    Dashboard  → http://${HOST_IP}:${FRONTEND_PORT}"
 echo "    API / docs → http://${HOST_IP}:${BACKEND_PORT}/docs"
 echo ""
-echo "  Next steps:"
+echo "  Config:"
 echo "    sudo nano ${ENV_FILE}                    # set AI provider keys"
-echo "    sudo systemctl start ${SERVICE_NAME}     # start the platform"
 echo ""
 echo "  Manage:"
 echo "    sudo systemctl stop    ${SERVICE_NAME}"
