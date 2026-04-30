@@ -235,9 +235,20 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ── Start / restart the service automatically ─────────────────────────────
+# Clear any failed state so systemctl start works unconditionally,
+# then bring up the containers via the service unit.
 echo "==> Starting ${SERVICE_NAME}…"
-systemctl restart "${SERVICE_NAME}"
-echo "    ✓ Service started"
+systemctl stop  "${SERVICE_NAME}" 2>/dev/null || true
+systemctl reset-failed "${SERVICE_NAME}" 2>/dev/null || true
+systemctl start "${SERVICE_NAME}"
+# Give compose a moment to hand off to Docker, then confirm
+sleep 3
+if systemctl is-active --quiet "${SERVICE_NAME}"; then
+  echo "    ✓ Service is active"
+else
+  echo "    ✗ Service failed to start — check: journalctl -u ${SERVICE_NAME} -n 50"
+  systemctl status "${SERVICE_NAME}" --no-pager || true
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
 HOST_IP=$(hostname -I | awk '{print $1}')
