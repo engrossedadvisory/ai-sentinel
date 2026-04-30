@@ -105,7 +105,7 @@ function MitigationModal({ agents, onClose, onSubmit }) {
   )
 }
 
-export default function MitigationCenter({ wsEvent, onAlert, initialFilter = {} }) {
+export default function MitigationCenter({ wsEvent, onAlert, demoMode, initialFilter = {} }) {
   const [mitigations,   setMitigations]   = useState([])
   const [violations,    setViolations]     = useState([])
   const [agents,        setAgents]         = useState([])
@@ -129,7 +129,7 @@ export default function MitigationCenter({ wsEvent, onAlert, initialFilter = {} 
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [demoMode])
 
   useEffect(() => {
     if (wsEvent?.type === 'mitigation_update') load()

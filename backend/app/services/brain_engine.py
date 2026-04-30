@@ -112,7 +112,7 @@ def _save_brain_configs() -> None:
         logger.warning(f"Could not save brain configs: {e}")
 
 _DEFAULT_MODELS = {
-    "claude": "claude-sonnet-4-5",
+    "claude": "claude-3-5-sonnet-20241022",
     "ollama": "llama3.2",
     "openai": "gpt-4o",
     "gemini": "gemini-2.0-flash",
@@ -394,7 +394,9 @@ async def _claude(system: str, user: str, model: str, api_key: str) -> Optional[
                 "messages": [{"role": "user", "content": user}],
             },
         )
-        r.raise_for_status()
+        if not r.is_success:
+            body = r.text[:500]
+            raise RuntimeError(f"Anthropic HTTP {r.status_code}: {body}")
         return _extract_json(r.json()["content"][0]["text"])
 
 

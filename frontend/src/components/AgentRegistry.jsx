@@ -96,7 +96,7 @@ function AgentModal({ agent, onClose, onSave }) {
   )
 }
 
-export default function AgentRegistry({ wsEvent, onAlert, initialFilter = {} }) {
+export default function AgentRegistry({ wsEvent, onAlert, demoMode, initialFilter = {} }) {
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
@@ -120,7 +120,7 @@ export default function AgentRegistry({ wsEvent, onAlert, initialFilter = {} }) 
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [filter, demoMode])
 
   useEffect(() => {
     if (wsEvent?.type === 'agent_registered' || wsEvent?.type === 'agent_status_change' || wsEvent?.type === 'agent_updated') {

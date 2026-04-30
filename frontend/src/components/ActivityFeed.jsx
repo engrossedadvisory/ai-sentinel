@@ -8,7 +8,7 @@ const RISK_COLOR = (score) => {
   return '#10b981'
 }
 
-export default function ActivityFeed({ wsEvent, onAlert, initialFilter = {} }) {
+export default function ActivityFeed({ wsEvent, onAlert, demoMode, initialFilter = {} }) {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({
@@ -31,7 +31,7 @@ export default function ActivityFeed({ wsEvent, onAlert, initialFilter = {} }) {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [filter, demoMode])
 
   useEffect(() => {
     if (wsEvent?.type === 'new_activity') {

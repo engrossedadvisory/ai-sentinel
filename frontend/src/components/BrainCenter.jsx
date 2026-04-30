@@ -12,8 +12,9 @@ const PROVIDERS = {
     keyHint:     'sk-ant-api03-…',
     keyField:    'api_key',
     providerKey: 'anthropic',
-    models:      ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-3-5',
-                  'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'],
+    models:      ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
+                  'claude-3-opus-20240229', 'claude-3-sonnet-20240229',
+                  'claude-3-haiku-20240307'],
     tip:         'Recommended: Haiku for Triage (speed), Sonnet for Detection/Risk/Policy, Opus for Mitigation (critical decisions).',
   },
   openai: {

@@ -15,7 +15,7 @@ const CONFIDENCE_COLOR = (c) => {
   return 'var(--accent-blue)'
 }
 
-export default function DetectionPanel({ wsEvent, onAlert, initialFilter = {} }) {
+export default function DetectionPanel({ wsEvent, onAlert, demoMode, initialFilter = {} }) {
   const [detections, setDetections] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [filter,     setFilter]     = useState({
@@ -41,7 +41,7 @@ export default function DetectionPanel({ wsEvent, onAlert, initialFilter = {} })
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [filter, demoMode])
 
   useEffect(() => {
     if (wsEvent?.type === 'new_detection') {
