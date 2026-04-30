@@ -221,7 +221,9 @@ async def test_brain(role: str):
     )
     if result:
         return {"ok": True, "brain": role, "model": brain.model, "result": result}
-    return {"ok": False, "reason": "No response from model — check logs"}
+    # Surface the actual error from the last call so the UI can show it
+    last_err = brain.stats.last_error or "No response from model — check server logs"
+    return {"ok": False, "reason": last_err}
 
 
 # ── On-demand analysis ─────────────────────────────────────────────────────

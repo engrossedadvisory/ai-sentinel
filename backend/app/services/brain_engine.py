@@ -396,8 +396,19 @@ async def _gemini(system: str, user: str, model: str, api_key: str) -> Optional[
                 },
             },
         )
-        r.raise_for_status()
-        return _extract_json(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+        if not r.is_success:
+            body = r.text[:500]
+            raise RuntimeError(f"Gemini HTTP {r.status_code}: {body}")
+        data = r.json()
+        # Surface finish_reason / safety blocks before trying to parse
+        candidate = data.get("candidates", [{}])[0]
+        finish = candidate.get("finishReason", "")
+        if finish and finish not in ("STOP", "MAX_TOKENS"):
+            raise RuntimeError(f"Gemini blocked — finishReason: {finish}")
+        parts = candidate.get("content", {}).get("parts", [])
+        if not parts:
+            raise RuntimeError(f"Gemini returned no content parts. Response: {str(data)[:300]}")
+        return _extract_json(parts[0]["text"])
 
 
 async def _ollama(system: str, user: str, model: str) -> Optional[dict]:
