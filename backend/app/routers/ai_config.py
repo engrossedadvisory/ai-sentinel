@@ -192,7 +192,7 @@ class BrainUpdate(BaseModel):
 @router.post("/brains/{role}/configure")
 def configure_brain(role: str, payload: BrainUpdate):
     """Reconfigure a brain at runtime (takes effect immediately, non-persistent)."""
-    valid_providers = {"claude", "ollama", "openai", "none"}
+    valid_providers = {"claude", "ollama", "openai", "gemini", "none"}
     if payload.provider not in valid_providers:
         raise HTTPException(400, f"provider must be one of {valid_providers}")
     try:
