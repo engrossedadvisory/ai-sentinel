@@ -18,6 +18,17 @@ DEMO_AGENT_IDS = [
     "agent-mythos-shadow-02",
 ]
 
+# All string values that appear in seeded detection entities —
+# used to filter old demo records that predate the _demo flag
+DEMO_DETECTION_STRINGS = {
+    "agent-rogue-x99",
+    "agent-glasswing-analyst-01",
+    "Mythos Shadow Instance",
+    "llm-proxy-shadow",
+    "mythos/research-agent:3.2.1",
+    "unknown/llm-proxy:dev",
+}
+
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)

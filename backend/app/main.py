@@ -10,6 +10,7 @@ from .models import Base
 from .seed_data import seed
 from .routers import agents, policies, activities, detections, mitigations, ws, dashboard, ai_config
 from .services.detection_engine import run_detection_scanner
+from .services.discovery import start_discovery_loop
 from .routers.ai_config import _policy_brain_task
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -29,6 +30,9 @@ async def lifespan(app: FastAPI):
 
     scanner_task = asyncio.create_task(run_detection_scanner())
     logger.info("Detection scanner started")
+
+    start_discovery_loop()
+    logger.info("Agent discovery loop started")
 
     async def _policy_brain_loop():
         await asyncio.sleep(120)

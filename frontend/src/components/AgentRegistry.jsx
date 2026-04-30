@@ -128,6 +128,8 @@ export default function AgentRegistry({ wsEvent, onAlert, demoMode, initialFilte
     }
   }, [wsEvent])
 
+  const [scanning, setScanning] = useState(false)
+
   const action = async (fn, successMsg) => {
     try { await fn(); await load(); onAlert('success', successMsg) }
     catch (e) { onAlert('error', e.message) }
@@ -139,6 +141,20 @@ export default function AgentRegistry({ wsEvent, onAlert, demoMode, initialFilte
     } else {
       await action(() => api.createAgent(data), 'Agent registered')
     }
+  }
+
+  const handleDiscover = async () => {
+    setScanning(true)
+    try {
+      const result = await api.discoverAgents()
+      if (result.new_agents > 0) {
+        onAlert('success', `Discovery found ${result.new_agents} new agent(s) — pending authorization`)
+        await load()
+      } else {
+        onAlert('info', 'Scan complete — no new agents found')
+      }
+    } catch (e) { onAlert('error', e.message) }
+    finally { setScanning(false) }
   }
 
   const riskColor = r => ({ low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' }[r] || '#94a3b8')
@@ -169,6 +185,9 @@ export default function AgentRegistry({ wsEvent, onAlert, demoMode, initialFilte
           {['low', 'medium', 'high', 'critical'].map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <div className="toolbar-spacer" />
+        <button className="btn btn-secondary" onClick={handleDiscover} disabled={scanning}>
+          {scanning ? '⟳ Scanning…' : '⊕ Scan for Agents'}
+        </button>
         <button className="btn btn-primary" onClick={() => setModal({ agent: null })}>+ Register Agent</button>
       </div>
 

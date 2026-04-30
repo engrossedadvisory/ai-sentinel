@@ -7,17 +7,17 @@ from typing import List
 from ..database import get_db
 from ..models import Agent, Policy, Activity, PolicyViolation, Mitigation, Detection, AgentStatus, RiskLevel, MitigationStatus
 from ..schemas import DashboardStats
-from ..seed_data import DEMO_AGENT_IDS
+from ..seed_data import DEMO_AGENT_IDS, DEMO_DETECTION_STRINGS
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-_DEMO_IDS_SET = set(DEMO_AGENT_IDS)
+_DEMO_STRINGS = set(DEMO_AGENT_IDS) | DEMO_DETECTION_STRINGS
 
 def _is_demo_detection(d) -> bool:
     entity = d.entity or {}
     if entity.get("_demo"):
         return True
-    return any(v in _DEMO_IDS_SET for v in entity.values() if isinstance(v, str))
+    return any(v in _DEMO_STRINGS for v in entity.values() if isinstance(v, str))
 
 
 def utcnow():

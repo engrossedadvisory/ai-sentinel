@@ -40,6 +40,7 @@ export const api = {
   quarantineAgent: (id)       => request(`/agents/${id}/quarantine`, { method: 'POST' }),
   suspendAgent:    (id)       => request(`/agents/${id}/suspend`,    { method: 'POST' }),
   deleteAgent:     (id)       => request(`/agents/${id}`,       { method: 'DELETE' }),
+  discoverAgents:  ()         => request('/agents/discover',     { method: 'POST' }),
 
   // Policies
   getPolicies:    ()          => request('/policies'),

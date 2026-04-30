@@ -157,3 +157,11 @@ def delete_agent(agent_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Agent not found")
     db.delete(agent)
     db.commit()
+
+
+@router.post("/discover")
+async def trigger_discovery():
+    """Manually trigger an agent discovery scan (Docker + Ollama)."""
+    from ..services.discovery import run_discovery
+    result = await run_discovery()
+    return result

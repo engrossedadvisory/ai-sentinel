@@ -6,10 +6,12 @@ services:
     # to use dynamically detected free ports. Do not add ports here.
     volumes:
       - governance_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only Docker socket for agent discovery
     env_file:
       - .env
     environment:
       - DATABASE_URL=sqlite:////app/data/governance.db
+      - DISCOVERY_INTERVAL=300    # seconds between auto-discovery scans (default 5 min)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
