@@ -13,25 +13,32 @@ let alertId = 0
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 export default function App() {
-  const [page,      setPage]      = useState('dashboard')
-  const [demoMode,  setDemoModeState] = useState(true)
-  const [navFilter, setNavFilter] = useState({})
+  const [page,       setPage]      = useState('dashboard')
+  const [demoMode,   setDemoModeState] = useState(true)
+  const [navFilter,  setNavFilter] = useState({})
+  // navKey increments on every onNav call — forces child to remount with fresh initialFilter
+  const [navKey,     setNavKey]    = useState(0)
   const [wsConnected, setWsConnected] = useState(false)
   const [wsEvent,     setWsEvent]     = useState(null)
   const [alerts,      setAlerts]      = useState([])
   const wsRef          = useRef(null)
   const reconnectTimer = useRef(null)
 
-  // Keep client module in sync with demoMode state
-  useEffect(() => { setDemoMode(demoMode) }, [demoMode])
-
+  // Update module-level flag synchronously inside the setter so child effects
+  // always see the correct value when they fire on the same render cycle.
   const toggleDemo = useCallback(() => {
-    setDemoModeState(prev => !prev)
+    setDemoModeState(prev => {
+      const next = !prev
+      setDemoMode(next)   // sync — happens before any re-render or effects
+      return next
+    })
   }, [])
 
-  // Navigate to a page, optionally pre-loading filters/tab
+  // Navigate to a page with optional pre-loaded filter.
+  // Incrementing navKey causes the target component to remount (fresh initialFilter).
   const onNav = useCallback((targetPage, filter = {}) => {
     setNavFilter(filter)
+    setNavKey(k => k + 1)
     setPage(targetPage)
   }, [])
 
@@ -46,71 +53,47 @@ export default function App() {
     try {
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
-
-      ws.onopen = () => {
+      ws.onopen  = () => {
         setWsConnected(true)
         if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
       }
-
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
           setWsEvent(msg)
-          if (msg.type === 'policy_violation') {
-            pushAlert('danger', `Policy violation: ${msg.data.policy} — ${msg.data.agent_id}`)
-          } else if (msg.type === 'new_detection') {
-            pushAlert('warning', `New detection: ${msg.data.detection_type} via ${msg.data.source}`)
-          } else if (msg.type === 'agent_status_change') {
-            pushAlert('info', `Agent ${msg.data.name} → ${msg.data.status}`)
-          } else if (msg.type === 'governance_alert') {
-            pushAlert('danger', `Alert: ${msg.data.message}`)
-          }
+          if      (msg.type === 'policy_violation')   pushAlert('danger',  `Policy violation: ${msg.data.policy} — ${msg.data.agent_id}`)
+          else if (msg.type === 'new_detection')       pushAlert('warning', `New detection: ${msg.data.detection_type} via ${msg.data.source}`)
+          else if (msg.type === 'agent_status_change') pushAlert('info',    `Agent ${msg.data.name} → ${msg.data.status}`)
+          else if (msg.type === 'governance_alert')    pushAlert('danger',  `Alert: ${msg.data.message}`)
         } catch {}
       }
-
-      ws.onclose = () => {
-        setWsConnected(false)
-        reconnectTimer.current = setTimeout(connectWs, 3000)
-      }
-
+      ws.onclose = () => { setWsConnected(false); reconnectTimer.current = setTimeout(connectWs, 3000) }
       ws.onerror = () => ws.close()
-    } catch {
-      reconnectTimer.current = setTimeout(connectWs, 3000)
-    }
+    } catch { reconnectTimer.current = setTimeout(connectWs, 3000) }
   }, [pushAlert])
 
   useEffect(() => {
     connectWs()
-    return () => {
-      wsRef.current?.close()
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-    }
+    return () => { wsRef.current?.close(); if (reconnectTimer.current) clearTimeout(reconnectTimer.current) }
   }, [connectWs])
-
-  // Clear navFilter after it's consumed (one-shot)
-  const consumeFilter = useCallback(() => {
-    const f = navFilter
-    setNavFilter({})
-    return f
-  }, [navFilter])
 
   const PAGE_PROPS = { wsEvent, onAlert: pushAlert, demoMode }
 
   return (
     <div className="app">
+      {/* Sidebar uses onNav so navKey increments and the target page remounts cleanly */}
       <Sidebar active={page} onNav={(p) => onNav(p)} wsConnected={wsConnected} />
 
       <main className="main-content">
-        {page === 'dashboard'   && <Dashboard   {...PAGE_PROPS} onNav={onNav} demoMode={demoMode} onToggleDemo={toggleDemo} />}
-        {page === 'agents'      && <AgentRegistry   {...PAGE_PROPS} initialFilter={consumeFilter()} />}
-        {page === 'policies'    && <PolicyManager    onAlert={pushAlert} demoMode={demoMode} />}
-        {page === 'activities'  && <ActivityFeed     {...PAGE_PROPS} initialFilter={consumeFilter()} />}
-        {page === 'detections'  && <DetectionPanel   {...PAGE_PROPS} initialFilter={consumeFilter()} />}
-        {page === 'mitigations' && <MitigationCenter {...PAGE_PROPS} initialFilter={consumeFilter()} />}
-        {page === 'brains'      && <BrainCenter      onAlert={pushAlert} />}
+        {page === 'dashboard'   && <Dashboard      key={navKey} {...PAGE_PROPS} onNav={onNav} onToggleDemo={toggleDemo} />}
+        {page === 'agents'      && <AgentRegistry  key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
+        {page === 'policies'    && <PolicyManager  key={navKey} onAlert={pushAlert} demoMode={demoMode} />}
+        {page === 'activities'  && <ActivityFeed   key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
+        {page === 'detections'  && <DetectionPanel key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
+        {page === 'mitigations' && <MitigationCenter key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
+        {page === 'brains'      && <BrainCenter    key={navKey} onAlert={pushAlert} />}
       </main>
 
-      {/* Alert toasts */}
       <div className="alert-container">
         {alerts.map(a => (
           <div key={a.id} className={`alert-toast ${a.type}`}>

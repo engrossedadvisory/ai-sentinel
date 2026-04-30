@@ -3,7 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
-import { api } from '../api/client'
+import { api, setDemoMode } from '../api/client'
 
 const RISK_COLORS = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' }
 
@@ -67,8 +67,10 @@ export default function Dashboard({ wsEvent, onNav, demoMode, onToggleDemo }) {
   const [violations, setViolations] = useState([])
   const [detections, setDetections] = useState([])
 
-  const load = async () => {
+  // Explicitly sync the module flag then fetch — avoids any stale-closure race
+  const load = async (dm = demoMode) => {
     try {
+      setDemoMode(dm)
       const [s, c, v, d] = await Promise.all([
         api.getStats(),
         api.getActivityChart(24),
@@ -79,7 +81,7 @@ export default function Dashboard({ wsEvent, onNav, demoMode, onToggleDemo }) {
     } catch (e) { console.error('Dashboard load error:', e) }
   }
 
-  useEffect(() => { load() }, [demoMode])
+  useEffect(() => { load(demoMode) }, [demoMode])
 
   useEffect(() => {
     if (wsEvent && ['new_activity', 'policy_violation', 'new_detection', 'agent_status_change'].includes(wsEvent.type)) {
