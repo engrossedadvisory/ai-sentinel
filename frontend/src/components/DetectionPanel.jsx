@@ -15,18 +15,28 @@ const CONFIDENCE_COLOR = (c) => {
   return 'var(--accent-blue)'
 }
 
-export default function DetectionPanel({ wsEvent, onAlert }) {
+export default function DetectionPanel({ wsEvent, onAlert, initialFilter = {} }) {
   const [detections, setDetections] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState({ status: '', detection_type: '' })
-  const [selected, setSelected] = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [filter,     setFilter]     = useState({
+    status:         initialFilter.status         || '',
+    detection_type: initialFilter.detection_type || '',
+  })
+  const [selected,   setSelected]   = useState(null)
+  const highlightId = initialFilter.highlight || null
 
   const load = async () => {
     try {
       const params = {}
-      if (filter.status) params.status = filter.status
+      if (filter.status)         params.status         = filter.status
       if (filter.detection_type) params.detection_type = filter.detection_type
-      setDetections(await api.getDetections(params))
+      const data = await api.getDetections(params)
+      setDetections(data)
+      // Auto-select highlighted item from dashboard drill-down
+      if (highlightId) {
+        const found = data.find(d => d.id === highlightId)
+        if (found) setSelected(found)
+      }
     } catch (e) { onAlert('error', e.message) }
     finally { setLoading(false) }
   }

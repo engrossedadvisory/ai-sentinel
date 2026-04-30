@@ -7,6 +7,17 @@ from .models import (
     AgentStatus, RiskLevel, PolicyAction
 )
 
+# Exported so routers can filter demo records out in live mode
+DEMO_AGENT_IDS = [
+    "agent-mythos-core-01",
+    "agent-glasswing-analyst-01",
+    "agent-assistant-support-01",
+    "agent-devops-auto-01",
+    "agent-rogue-x99",
+    "agent-research-helper-02",
+    "agent-mythos-shadow-02",
+]
+
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -288,7 +299,7 @@ def seed(db: Session):
         {
             "detection_type": "new_deployment",
             "source": "docker_scan",
-            "entity": {"name": "Mythos Shadow Instance", "image": "mythos/research-agent:3.2.1", "endpoint": "http://10.0.1.99:8080"},
+            "entity": {"_demo": True, "name": "Mythos Shadow Instance", "image": "mythos/research-agent:3.2.1", "endpoint": "http://10.0.1.99:8080"},
             "confidence": 0.97,
             "risk_assessment": {"unauthorized": True, "prod_network": True},
             "status": "confirmed",
@@ -296,7 +307,7 @@ def seed(db: Session):
         {
             "detection_type": "unauthorized_access",
             "source": "api_gateway",
-            "entity": {"agent_id": "agent-rogue-x99", "action": "admin_override", "target": "production-db"},
+            "entity": {"_demo": True, "agent_id": "agent-rogue-x99", "action": "admin_override", "target": "production-db"},
             "confidence": 0.99,
             "risk_assessment": {"severity": "critical", "immediate_action": True},
             "status": "confirmed",
@@ -304,7 +315,7 @@ def seed(db: Session):
         {
             "detection_type": "capability_expansion",
             "source": "api_discovery",
-            "entity": {"agent_id": "agent-glasswing-analyst-01", "new_endpoint": "/execute_code", "capability": "code_execution"},
+            "entity": {"_demo": True, "agent_id": "agent-glasswing-analyst-01", "new_endpoint": "/execute_code", "capability": "code_execution"},
             "confidence": 0.78,
             "risk_assessment": {"undeclared_capability": True},
             "status": "investigating",
@@ -312,7 +323,7 @@ def seed(db: Session):
         {
             "detection_type": "new_deployment",
             "source": "kubernetes_watch",
-            "entity": {"name": "llm-proxy-shadow", "namespace": "default", "image": "unknown/llm-proxy:dev"},
+            "entity": {"_demo": True, "name": "llm-proxy-shadow", "namespace": "default", "image": "unknown/llm-proxy:dev"},
             "confidence": 0.91,
             "risk_assessment": {"unapproved_namespace": True},
             "status": "new",
@@ -320,7 +331,7 @@ def seed(db: Session):
         {
             "detection_type": "anomalous_behavior",
             "source": "log_analysis",
-            "entity": {"agent_id": "agent-glasswing-analyst-01", "anomaly": "unusual_external_requests", "count": 342},
+            "entity": {"_demo": True, "agent_id": "agent-glasswing-analyst-01", "anomaly": "unusual_external_requests", "count": 342},
             "confidence": 0.83,
             "risk_assessment": {"exfil_risk": "medium"},
             "status": "investigating",

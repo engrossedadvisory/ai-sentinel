@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/detections", tags=["detections"])
 def list_detections(
     status: Optional[str] = None,
     detection_type: Optional[str] = None,
+    demo_mode: bool = True,
     db: Session = Depends(get_db),
 ):
     q = db.query(Detection)
@@ -23,7 +24,14 @@ def list_detections(
         q = q.filter(Detection.status == status)
     if detection_type:
         q = q.filter(Detection.detection_type == detection_type)
-    return q.order_by(Detection.detected_at.desc()).all()
+    results = q.order_by(Detection.detected_at.desc()).all()
+    if not demo_mode:
+        results = [d for d in results if not (d.entity or {}).get("_demo")]
+    # Strip internal _demo tag from entity before returning
+    for d in results:
+        if d.entity and "_demo" in d.entity:
+            d.entity = {k: v for k, v in d.entity.items() if k != "_demo"}
+    return results
 
 
 @router.post("/report", response_model=DetectionOut, status_code=status.HTTP_201_CREATED)

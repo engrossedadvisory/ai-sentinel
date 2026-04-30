@@ -7,17 +7,33 @@ import ActivityFeed from './components/ActivityFeed'
 import DetectionPanel from './components/DetectionPanel'
 import MitigationCenter from './components/MitigationCenter'
 import BrainCenter from './components/BrainCenter'
+import { setDemoMode } from './api/client'
 
 let alertId = 0
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 export default function App() {
-  const [page, setPage] = useState('dashboard')
+  const [page,      setPage]      = useState('dashboard')
+  const [demoMode,  setDemoModeState] = useState(true)
+  const [navFilter, setNavFilter] = useState({})
   const [wsConnected, setWsConnected] = useState(false)
-  const [wsEvent, setWsEvent] = useState(null)
-  const [alerts, setAlerts] = useState([])
-  const wsRef = useRef(null)
+  const [wsEvent,     setWsEvent]     = useState(null)
+  const [alerts,      setAlerts]      = useState([])
+  const wsRef          = useRef(null)
   const reconnectTimer = useRef(null)
+
+  // Keep client module in sync with demoMode state
+  useEffect(() => { setDemoMode(demoMode) }, [demoMode])
+
+  const toggleDemo = useCallback(() => {
+    setDemoModeState(prev => !prev)
+  }, [])
+
+  // Navigate to a page, optionally pre-loading filters/tab
+  const onNav = useCallback((targetPage, filter = {}) => {
+    setNavFilter(filter)
+    setPage(targetPage)
+  }, [])
 
   const pushAlert = useCallback((type, message) => {
     const id = ++alertId
@@ -40,8 +56,6 @@ export default function App() {
         try {
           const msg = JSON.parse(e.data)
           setWsEvent(msg)
-
-          // Show toast for important events
           if (msg.type === 'policy_violation') {
             pushAlert('danger', `Policy violation: ${msg.data.policy} — ${msg.data.agent_id}`)
           } else if (msg.type === 'new_detection') {
@@ -73,20 +87,27 @@ export default function App() {
     }
   }, [connectWs])
 
-  const PAGE_PROPS = { wsEvent, onAlert: pushAlert }
+  // Clear navFilter after it's consumed (one-shot)
+  const consumeFilter = useCallback(() => {
+    const f = navFilter
+    setNavFilter({})
+    return f
+  }, [navFilter])
+
+  const PAGE_PROPS = { wsEvent, onAlert: pushAlert, demoMode }
 
   return (
     <div className="app">
-      <Sidebar active={page} onNav={setPage} wsConnected={wsConnected} />
+      <Sidebar active={page} onNav={(p) => onNav(p)} wsConnected={wsConnected} />
 
       <main className="main-content">
-        {page === 'dashboard' && <Dashboard {...PAGE_PROPS} />}
-        {page === 'agents' && <AgentRegistry {...PAGE_PROPS} />}
-        {page === 'policies' && <PolicyManager onAlert={pushAlert} />}
-        {page === 'activities' && <ActivityFeed {...PAGE_PROPS} />}
-        {page === 'detections' && <DetectionPanel {...PAGE_PROPS} />}
-        {page === 'mitigations' && <MitigationCenter {...PAGE_PROPS} />}
-        {page === 'brains'      && <BrainCenter onAlert={pushAlert} />}
+        {page === 'dashboard'   && <Dashboard   {...PAGE_PROPS} onNav={onNav} demoMode={demoMode} onToggleDemo={toggleDemo} />}
+        {page === 'agents'      && <AgentRegistry   {...PAGE_PROPS} initialFilter={consumeFilter()} />}
+        {page === 'policies'    && <PolicyManager    onAlert={pushAlert} demoMode={demoMode} />}
+        {page === 'activities'  && <ActivityFeed     {...PAGE_PROPS} initialFilter={consumeFilter()} />}
+        {page === 'detections'  && <DetectionPanel   {...PAGE_PROPS} initialFilter={consumeFilter()} />}
+        {page === 'mitigations' && <MitigationCenter {...PAGE_PROPS} initialFilter={consumeFilter()} />}
+        {page === 'brains'      && <BrainCenter      onAlert={pushAlert} />}
       </main>
 
       {/* Alert toasts */}
@@ -102,7 +123,8 @@ export default function App() {
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.message}</div>
             </div>
-            <button className="btn btn-ghost btn-sm btn-icon" style={{ marginLeft: 'auto' }} onClick={() => setAlerts(p => p.filter(x => x.id !== a.id))}>✕</button>
+            <button className="btn btn-ghost btn-sm btn-icon" style={{ marginLeft: 'auto' }}
+              onClick={() => setAlerts(p => p.filter(x => x.id !== a.id))}>✕</button>
           </div>
         ))}
       </div>

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from ..database import get_db
 from ..models import Agent, Activity, AgentStatus
 from ..schemas import ActivityReport, ActivityOut
+from ..seed_data import DEMO_AGENT_IDS
 from ..services.policy_engine import compute_risk_score, evaluate_activity, record_violation
 from ..services.mitigation_service import execute_mitigation
 from ..services import brain_engine
@@ -23,15 +24,26 @@ def utcnow():
 def list_activities(
     agent_id: Optional[str] = None,
     flagged: Optional[bool] = None,
+    since: Optional[str] = None,
     limit: int = Query(default=100, le=500),
     offset: int = 0,
+    demo_mode: bool = True,
     db: Session = Depends(get_db),
 ):
     q = db.query(Activity)
+    if not demo_mode:
+        q = q.filter(Activity.agent_id.notin_(DEMO_AGENT_IDS))
     if agent_id:
         q = q.filter(Activity.agent_id == agent_id)
     if flagged is not None:
         q = q.filter(Activity.flagged == flagged)
+    if since:
+        from datetime import datetime
+        try:
+            dt = datetime.fromisoformat(since)
+            q = q.filter(Activity.timestamp >= dt)
+        except ValueError:
+            pass
     return q.order_by(Activity.timestamp.desc()).offset(offset).limit(limit).all()
 
 

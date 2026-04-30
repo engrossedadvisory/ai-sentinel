@@ -105,13 +105,15 @@ function MitigationModal({ agents, onClose, onSubmit }) {
   )
 }
 
-export default function MitigationCenter({ wsEvent, onAlert }) {
-  const [mitigations, setMitigations] = useState([])
-  const [violations, setViolations] = useState([])
-  const [agents, setAgents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
-  const [tab, setTab] = useState('mitigations')
+export default function MitigationCenter({ wsEvent, onAlert, initialFilter = {} }) {
+  const [mitigations,   setMitigations]   = useState([])
+  const [violations,    setViolations]     = useState([])
+  const [agents,        setAgents]         = useState([])
+  const [loading,       setLoading]        = useState(true)
+  const [modal,         setModal]          = useState(false)
+  const [tab,           setTab]            = useState(initialFilter.tab || 'mitigations')
+  const [violationFilter, setViolationFilter] = useState(initialFilter.status || '')
+  const highlightId = initialFilter.highlight || null
 
   const load = async () => {
     try {
@@ -220,49 +222,60 @@ export default function MitigationCenter({ wsEvent, onAlert }) {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>ID</th><th>Agent</th><th>Policy</th><th>Severity</th><th>Status</th><th>Detected</th><th>Actions</th></tr>
-              </thead>
-              <tbody>
-                {violations.map(v => {
-                  const agent = agents.find(a => a.id === v.agent_id)
-                  return (
-                    <tr key={v.id}>
-                      <td style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 12 }}>#{v.id}</td>
-                      <td style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text-secondary)' }}>
-                        {agent?.name || '—'}
-                      </td>
-                      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {v.violation_details?.policy_name || `Policy #${v.policy_id}`}
-                      </td>
-                      <td><span className={`badge badge-${v.severity}`}>{v.severity}</span></td>
-                      <td><span className={`badge badge-${v.status}`}>{v.status}</span></td>
-                      <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {new Date(v.detected_at).toLocaleString()}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {v.status === 'open' && (
-                            <button className="btn btn-warning btn-sm" onClick={() => handleViolationStatus(v.id, 'acknowledged')}>Ack</button>
-                          )}
-                          {v.status !== 'resolved' && (
-                            <button className="btn btn-success btn-sm" onClick={() => handleViolationStatus(v.id, 'resolved')}>Resolve</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {violations.length === 0 && (
-              <div className="empty-state"><div className="icon">✓</div><p>No policy violations</p></div>
-            )}
+        <>
+          <div className="toolbar" style={{ marginBottom: 8 }}>
+            <select className="form-select" style={{ width: 160 }} value={violationFilter} onChange={e => setViolationFilter(e.target.value)}>
+              <option value="">All Statuses</option>
+              {['open', 'acknowledged', 'resolved', 'false_positive'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-        </div>
+          <div className="card" style={{ padding: 0 }}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>ID</th><th>Agent</th><th>Policy</th><th>Severity</th><th>Status</th><th>Detected</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                  {violations
+                    .filter(v => !violationFilter || v.status === violationFilter)
+                    .map(v => {
+                      const agent      = agents.find(a => a.id === v.agent_id)
+                      const isHighlight = highlightId && v.id === highlightId
+                      return (
+                        <tr key={v.id} style={{ background: isHighlight ? 'rgba(6,182,212,0.08)' : '', outline: isHighlight ? '1px solid rgba(6,182,212,0.3)' : '' }}>
+                          <td style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 12 }}>#{v.id}</td>
+                          <td style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text-secondary)' }}>
+                            {agent?.name || '—'}
+                          </td>
+                          <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                            {v.violation_details?.policy_name || `Policy #${v.policy_id}`}
+                          </td>
+                          <td><span className={`badge badge-${v.severity}`}>{v.severity}</span></td>
+                          <td><span className={`badge badge-${v.status}`}>{v.status}</span></td>
+                          <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {new Date(v.detected_at).toLocaleString()}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              {v.status === 'open' && (
+                                <button className="btn btn-warning btn-sm" onClick={() => handleViolationStatus(v.id, 'acknowledged')}>Ack</button>
+                              )}
+                              {v.status !== 'resolved' && (
+                                <button className="btn btn-success btn-sm" onClick={() => handleViolationStatus(v.id, 'resolved')}>Resolve</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+              {violations.filter(v => !violationFilter || v.status === violationFilter).length === 0 && (
+                <div className="empty-state"><div className="icon">✓</div><p>No policy violations</p></div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {modal && (

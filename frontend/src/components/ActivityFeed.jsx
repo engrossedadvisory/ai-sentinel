@@ -8,10 +8,14 @@ const RISK_COLOR = (score) => {
   return '#10b981'
 }
 
-export default function ActivityFeed({ wsEvent, onAlert }) {
+export default function ActivityFeed({ wsEvent, onAlert, initialFilter = {} }) {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState({ flagged: '', agent_id: '' })
+  const [filter, setFilter] = useState({
+    flagged:  initialFilter.flagged  || '',
+    agent_id: initialFilter.agent_id || '',
+    since:    initialFilter.since    || '',
+  })
   const [liveItems, setLiveItems] = useState([])
   const feedRef = useRef(null)
 
@@ -20,6 +24,7 @@ export default function ActivityFeed({ wsEvent, onAlert }) {
       const params = { limit: 100 }
       if (filter.flagged !== '') params.flagged = filter.flagged === 'true'
       if (filter.agent_id) params.agent_id = filter.agent_id
+      if (filter.since)    params.since    = filter.since
       const data = await api.getActivities(params)
       setActivities(data)
     } catch (e) { onAlert('error', e.message) }
@@ -58,6 +63,12 @@ export default function ActivityFeed({ wsEvent, onAlert }) {
           value={filter.agent_id}
           onChange={e => setFilter(p => ({ ...p, agent_id: e.target.value }))}
         />
+        {filter.since && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.2)', fontSize: 11, color: '#06b6d4' }}>
+            ◷ From {new Date(filter.since).toLocaleTimeString()}
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 0, marginLeft: 4 }} onClick={() => setFilter(p => ({ ...p, since: '' }))}>✕</button>
+          </div>
+        )}
         <div className="toolbar-spacer" />
         <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', animation: 'pulse 2s infinite' }} />

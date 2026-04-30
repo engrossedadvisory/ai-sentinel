@@ -96,11 +96,16 @@ function AgentModal({ agent, onClose, onSave }) {
   )
 }
 
-export default function AgentRegistry({ wsEvent, onAlert }) {
+export default function AgentRegistry({ wsEvent, onAlert, initialFilter = {} }) {
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
-  const [filter, setFilter] = useState({ status: '', environment: '', authorized: '' })
+  const [filter, setFilter] = useState({
+    status: initialFilter.status || '',
+    environment: initialFilter.environment || '',
+    authorized: initialFilter.authorized || '',
+    risk_level: initialFilter.risk_level || '',
+  })
 
   const load = async () => {
     try {
@@ -108,6 +113,7 @@ export default function AgentRegistry({ wsEvent, onAlert }) {
       if (filter.status) params.status = filter.status
       if (filter.environment) params.environment = filter.environment
       if (filter.authorized !== '') params.authorized = filter.authorized === 'true'
+      if (filter.risk_level) params.risk_level = filter.risk_level
       const data = await api.getAgents(params)
       setAgents(data)
     } catch (e) { onAlert('error', e.message) }
@@ -157,6 +163,10 @@ export default function AgentRegistry({ wsEvent, onAlert }) {
           <option value="">Auth: All</option>
           <option value="true">Authorized</option>
           <option value="false">Unauthorized</option>
+        </select>
+        <select className="form-select" style={{ width: 140 }} value={filter.risk_level} onChange={e => setFilter(p => ({ ...p, risk_level: e.target.value }))}>
+          <option value="">All Risk Levels</option>
+          {['low', 'medium', 'high', 'critical'].map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <div className="toolbar-spacer" />
         <button className="btn btn-primary" onClick={() => setModal({ agent: null })}>+ Register Agent</button>

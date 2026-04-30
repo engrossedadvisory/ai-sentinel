@@ -8,6 +8,7 @@ from ..database import get_db
 from ..models import Agent, AgentStatus, RiskLevel
 from ..schemas import AgentCreate, AgentUpdate, AgentOut
 from ..websocket_manager import manager as ws_manager
+from ..seed_data import DEMO_AGENT_IDS
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -22,9 +23,12 @@ def list_agents(
     environment: Optional[str] = None,
     risk_level: Optional[str] = None,
     authorized: Optional[bool] = None,
+    demo_mode: bool = True,
     db: Session = Depends(get_db),
 ):
     q = db.query(Agent)
+    if not demo_mode:
+        q = q.filter(Agent.agent_id.notin_(DEMO_AGENT_IDS))
     if status:
         q = q.filter(Agent.status == status)
     if environment:

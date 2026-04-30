@@ -6,6 +6,7 @@ from ..database import get_db
 from ..models import Mitigation, Agent, PolicyViolation, MitigationStatus
 from ..schemas import MitigationCreate, MitigationOut, ViolationOut
 from ..services.mitigation_service import execute_mitigation
+from ..seed_data import DEMO_AGENT_IDS
 
 router = APIRouter(prefix="/api/mitigations", tags=["mitigations"])
 
@@ -70,9 +71,14 @@ def get_mitigation(mitigation_id: int, db: Session = Depends(get_db)):
 def list_violations(
     status: Optional[str] = None,
     severity: Optional[str] = None,
+    demo_mode: bool = True,
     db: Session = Depends(get_db),
 ):
     q = db.query(PolicyViolation)
+    if not demo_mode:
+        q = q.join(Agent, PolicyViolation.agent_id == Agent.id).filter(
+            Agent.agent_id.notin_(DEMO_AGENT_IDS)
+        )
     if status:
         q = q.filter(PolicyViolation.status == status)
     if severity:
