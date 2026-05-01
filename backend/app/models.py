@@ -155,6 +155,7 @@ class PolicyRecommendation(Base):
     gap_summary   = Column(Text, nullable=True)
     brain_model   = Column(String, nullable=True)
     status        = Column(String, default="pending")  # pending|accepted|rejected
+    is_demo       = Column(Boolean, default=False)
     created_at    = Column(DateTime, default=utcnow)
 
 

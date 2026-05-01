@@ -1,13 +1,15 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .database import engine, SessionLocal
 from .models import Base
-from .seed_data import seed
+from .seed_data import seed, DEMO_AGENT_IDS, DEMO_DETECTION_STRINGS
 from .routers import agents, policies, activities, detections, mitigations, ws, dashboard, ai_config
 from .services.detection_engine import run_detection_scanner
 from .services.discovery import start_discovery_loop
@@ -16,10 +18,53 @@ from .routers.ai_config import _policy_brain_task
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+_DEMO_STRINGS = set(DEMO_AGENT_IDS) | DEMO_DETECTION_STRINGS
+
+
+def _run_migrations():
+    """Apply lightweight schema migrations for existing databases."""
+    with engine.connect() as conn:
+        # Add is_demo column to policy_recommendations (idempotent)
+        try:
+            conn.execute(text(
+                "ALTER TABLE policy_recommendations ADD COLUMN is_demo BOOLEAN DEFAULT 0"
+            ))
+            conn.commit()
+            logger.info("Migration: added is_demo column to policy_recommendations")
+        except Exception:
+            pass  # Column already exists
+
+        # Stamp existing demo detection entities with _demo=True so the
+        # live-mode filter catches records seeded before the flag was added.
+        try:
+            rows = conn.execute(text("SELECT id, entity FROM detections")).fetchall()
+            updated = 0
+            for row in rows:
+                det_id, entity_raw = row
+                try:
+                    entity = json.loads(entity_raw) if isinstance(entity_raw, str) else (entity_raw or {})
+                except Exception:
+                    continue
+                if entity.get("_demo"):
+                    continue  # already stamped
+                if any(v in _DEMO_STRINGS for v in entity.values() if isinstance(v, str)):
+                    entity["_demo"] = True
+                    conn.execute(
+                        text("UPDATE detections SET entity = :e WHERE id = :id"),
+                        {"e": json.dumps(entity), "id": det_id},
+                    )
+                    updated += 1
+            if updated:
+                conn.commit()
+                logger.info(f"Migration: stamped {updated} demo detection(s) with _demo=True")
+        except Exception as e:
+            logger.warning(f"Migration: detection stamp failed: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
 
     db = SessionLocal()
     try:

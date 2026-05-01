@@ -101,7 +101,7 @@ export default function App() {
         {page === 'activities'  && <ActivityFeed   key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
         {page === 'detections'  && <DetectionPanel key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
         {page === 'mitigations' && <MitigationCenter key={navKey} {...PAGE_PROPS} initialFilter={navFilter} />}
-        {page === 'brains'      && <BrainCenter    key={navKey} onAlert={pushAlert} />}
+        {page === 'brains'      && <BrainCenter    key={navKey} onAlert={pushAlert} demoMode={demoMode} />}
       </main>
 
       <div className="alert-container">

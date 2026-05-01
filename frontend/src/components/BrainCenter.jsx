@@ -760,7 +760,7 @@ function RecommendationCard({ rec, onAccept, onReject }) {
 
 
 // ── Main Page ─────────────────────────────────────────────────────────────
-export default function BrainCenter({ onAlert }) {
+export default function BrainCenter({ onAlert, demoMode }) {
   const [brains,        setBrains]        = useState([])
   const [recs,          setRecs]          = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -792,7 +792,7 @@ export default function BrainCenter({ onAlert }) {
     loadRecs()
   }
 
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [demoMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async (role, provider, model) => {
     try {

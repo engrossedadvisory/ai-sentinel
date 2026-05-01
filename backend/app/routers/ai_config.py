@@ -8,8 +8,9 @@ import httpx
 import logging
 
 from ..database import get_db
-from ..models import PolicyViolation, PolicyRecommendation
+from ..models import Agent, PolicyViolation, PolicyRecommendation
 from ..services import brain_engine
+from ..seed_data import DEMO_AGENT_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +247,12 @@ async def run_policy_brain(background_tasks: BackgroundTasks):
 
 
 @router.get("/recommendations")
-def list_recommendations(status: Optional[str] = None, db: Session = Depends(get_db)):
+def list_recommendations(status: Optional[str] = None, demo_mode: bool = True, db: Session = Depends(get_db)):
     q = db.query(PolicyRecommendation)
     if status:
         q = q.filter(PolicyRecommendation.status == status)
+    if not demo_mode:
+        q = q.filter(PolicyRecommendation.is_demo == False)  # noqa: E712
     recs = q.order_by(PolicyRecommendation.created_at.desc()).limit(50).all()
     return [
         {
@@ -313,6 +316,18 @@ async def _policy_brain_task(db: Session):
             PolicyViolation.detected_at.desc()
         ).limit(30).all()
 
+        # Determine whether these violations are all from demo agents so we
+        # can tag the resulting recommendations accordingly.
+        demo_agent_db_ids = {
+            row[0] for row in db2.query(Agent.id).filter(
+                Agent.agent_id.in_(DEMO_AGENT_IDS)
+            ).all()
+        }
+        violations_with_agent = [v for v in violations if v.agent_id is not None]
+        is_demo_run = bool(violations_with_agent) and all(
+            v.agent_id in demo_agent_db_ids for v in violations_with_agent
+        )
+
         violation_data = [
             {
                 "id": v.id,
@@ -348,6 +363,7 @@ async def _policy_brain_task(db: Session):
                 gap_summary=gap_summary,
                 brain_model=brain_model,
                 status="pending",
+                is_demo=is_demo_run,
             ))
         db2.commit()
     except Exception as e:

@@ -72,7 +72,11 @@ export const api = {
   configureBrain:       (role, data)   => request(`/ai/brains/${role}/configure`, { method: 'POST', body: data }),
   testBrain:            (role)         => request(`/ai/brains/${role}/test`,       { method: 'POST' }),
   runPolicyBrain:       ()             => request('/ai/brains/policy/run',          { method: 'POST' }),
-  getRecommendations:   (status)       => request(`/ai/recommendations${status ? '?status=' + status : ''}`),
+  getRecommendations: (status) => {
+    const q = new URLSearchParams({ demo_mode: _demoMode })
+    if (status) q.set('status', status)
+    return request(`/ai/recommendations?${q}`)
+  },
   acceptRecommendation: (id)           => request(`/ai/recommendations/${id}/accept`, { method: 'POST' }),
   rejectRecommendation: (id)           => request(`/ai/recommendations/${id}/reject`, { method: 'POST' }),
 
