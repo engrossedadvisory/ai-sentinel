@@ -108,6 +108,26 @@ async def run_detection_scanner():
                 template = random.choice(SIMULATED_DISCOVERIES)
                 db: Session = SessionLocal()
                 try:
+                    # Deduplicate: skip if an open detection already exists
+                    # for the same source + entity name / agent_id.
+                    entity_name = (
+                        template["entity"].get("name")
+                        or template["entity"].get("agent_id")
+                        or ""
+                    )
+                    existing = db.query(Detection).filter(
+                        Detection.source == template["source"],
+                        Detection.status.in_(["new", "investigating"]),
+                    ).all()
+                    already_open = any(
+                        (d.entity or {}).get("name") == entity_name
+                        or (d.entity or {}).get("agent_id") == entity_name
+                        for d in existing
+                    )
+                    if already_open:
+                        logger.debug(f"Detection scanner: skipping duplicate {template['source']} / {entity_name}")
+                        continue
+
                     # All scanner detections are simulated — mark as demo so
                     # they are hidden when the UI is in Live mode.
                     entity = {**template["entity"], "_demo": True}

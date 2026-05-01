@@ -34,6 +34,34 @@ def _run_migrations():
         except Exception:
             pass  # Column already exists
 
+        # Purge duplicate simulated detections — keep only the newest per
+        # (source, entity-name/agent_id) so the list isn't full of repeats.
+        try:
+            rows = conn.execute(text(
+                "SELECT id, source, entity FROM detections ORDER BY id DESC"
+            )).fetchall()
+            seen = set()
+            to_delete = []
+            for row in rows:
+                det_id, source, entity_raw = row
+                try:
+                    entity = json.loads(entity_raw) if isinstance(entity_raw, str) else (entity_raw or {})
+                except Exception:
+                    continue
+                key = (source, entity.get("name") or entity.get("agent_id") or "")
+                if key in seen:
+                    to_delete.append(det_id)
+                else:
+                    seen.add(key)
+            if to_delete:
+                conn.execute(text(
+                    f"DELETE FROM detections WHERE id IN ({','.join(str(i) for i in to_delete)})"
+                ))
+                conn.commit()
+                logger.info(f"Migration: removed {len(to_delete)} duplicate simulated detection(s)")
+        except Exception as e:
+            logger.warning(f"Migration: duplicate purge failed: {e}")
+
         # Stamp existing demo/simulated detection entities with _demo=True.
         # This catches records created before the flag existed (seeded rows
         # and the hundreds created by the background scanner simulation).
