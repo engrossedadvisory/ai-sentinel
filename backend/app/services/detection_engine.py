@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import Detection, Agent, AgentStatus, RiskLevel
 from ..websocket_manager import manager as ws_manager
+from ..seed_data import DEMO_AGENT_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +108,13 @@ async def run_detection_scanner():
                 template = random.choice(SIMULATED_DISCOVERIES)
                 db: Session = SessionLocal()
                 try:
+                    # All scanner detections are simulated — mark as demo so
+                    # they are hidden when the UI is in Live mode.
+                    entity = {**template["entity"], "_demo": True}
                     detection = Detection(
                         detection_type=template["detection_type"],
                         source=template["source"],
-                        entity=template["entity"],
+                        entity=entity,
                         confidence=template["confidence"] + random.uniform(-0.05, 0.05),
                         risk_assessment=template["risk_assessment"],
                         status="new",
@@ -139,14 +143,17 @@ async def run_detection_scanner():
 
 async def flag_anomalous_agent(agent: Agent, reason: str, db: Session):
     """Called by the activity pipeline when risk score exceeds threshold."""
+    entity = {
+        "agent_id": agent.agent_id,
+        "name": agent.name,
+        "reason": reason,
+    }
+    if agent.agent_id in DEMO_AGENT_IDS:
+        entity["_demo"] = True
     detection = Detection(
         detection_type="anomalous_behavior",
         source="activity_monitor",
-        entity={
-            "agent_id": agent.agent_id,
-            "name": agent.name,
-            "reason": reason,
-        },
+        entity=entity,
         confidence=0.85,
         risk_assessment={"agent_risk_level": agent.risk_level.value, "trigger": reason},
         status="new",

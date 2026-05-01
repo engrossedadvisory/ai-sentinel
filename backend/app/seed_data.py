@@ -18,15 +18,24 @@ DEMO_AGENT_IDS = [
     "agent-mythos-shadow-02",
 ]
 
-# All string values that appear in seeded detection entities —
-# used to filter old demo records that predate the _demo flag
+# All string values that appear in seeded OR simulated-scanner detection
+# entities — used to stamp old demo records that predate the _demo flag.
 DEMO_DETECTION_STRINGS = {
+    # Seeded detections (seed_data.py)
     "agent-rogue-x99",
     "agent-glasswing-analyst-01",
     "Mythos Shadow Instance",
     "llm-proxy-shadow",
     "mythos/research-agent:3.2.1",
     "unknown/llm-proxy:dev",
+    # Simulated scanner detections (detection_engine.py SIMULATED_DISCOVERIES)
+    "Mythos-ResearchAgent-v2",
+    "mythos/research-agent:2.1.0",
+    "Glasswing-DataPipeline",
+    "llm-proxy-service",
+    "internal/llm-proxy:latest",
+    "rogue-agent-x",
+    "agent-glasswing-01",
 }
 
 

@@ -34,8 +34,9 @@ def _run_migrations():
         except Exception:
             pass  # Column already exists
 
-        # Stamp existing demo detection entities with _demo=True so the
-        # live-mode filter catches records seeded before the flag was added.
+        # Stamp existing demo/simulated detection entities with _demo=True.
+        # This catches records created before the flag existed (seeded rows
+        # and the hundreds created by the background scanner simulation).
         try:
             rows = conn.execute(text("SELECT id, entity FROM detections")).fetchall()
             updated = 0
@@ -56,7 +57,7 @@ def _run_migrations():
                     updated += 1
             if updated:
                 conn.commit()
-                logger.info(f"Migration: stamped {updated} demo detection(s) with _demo=True")
+                logger.info(f"Migration: stamped {updated} demo/simulated detection(s) with _demo=True")
         except Exception as e:
             logger.warning(f"Migration: detection stamp failed: {e}")
 
